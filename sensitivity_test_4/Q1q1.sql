@@ -1,38 +1,18 @@
-WITH contacts_by_weekday_hour AS (
-  SELECT
-    *
-  FROM
-    SEMANTIC_VIEW(
-      PROD.ANALYTICS.SEM_VERBOSE METRICS total_contacts DIMENSIONS cal_day_of_week_name,
-      DATE_PART('hour', conv.c_contact_connected_datetime) AS hour_of_day
-    )
-),
-peak_hours AS (
-  SELECT
-    cal_day_of_week_name,
-    hour_of_day,
-    total_contacts,
-    RANK() OVER (
-      PARTITION BY cal_day_of_week_name
-      ORDER BY
-        total_contacts DESC NULLS LAST
-    ) AS rnk
-  FROM
-    contacts_by_weekday_hour
-)
 SELECT
-  c.cal_day_of_week_name,
-  c.hour_of_day,
-  c.total_contacts,
-  CASE
-    WHEN p.rnk = 1 THEN TRUE
-    ELSE FALSE
-  END AS is_peak_hour
+  cal.cal_day_of_week_name,
+  DATE_PART('hour', conv.c_contact_connected_datetime) AS hour_of_day,
+  COUNT(
+    DISTINCT CASE
+      WHEN conv.c_direction_original = 'inbound' THEN conv.identifier
+    END
+  ) AS inbound_contacts
 FROM
-  contacts_by_weekday_hour AS c
-  LEFT JOIN peak_hours AS p ON c.cal_day_of_week_name = p.cal_day_of_week_name
-  AND c.hour_of_day = p.hour_of_day
-  AND p.rnk = 1
+  conv AS conv
+  LEFT OUTER JOIN cale AS cal ON conv.contact_connected_date = cal.date_day
+WHERE
+  NOT conv.c_contact_connected_datetime IS NULL
+GROUP BY
+  cal.cal_day_of_week_name,
+  hour_of_day
 ORDER BY
-  c.cal_day_of_week_name,
-  c.hour_of_day NULLS LAST;
+  inbound_contacts DESC NULLS LAST
